@@ -5,6 +5,7 @@
 #include <esp_task_wdt.h>
 #include <EEPROM.h>
 #include <SimpleTimer.h>
+#include <time.h>
 
 // eeprom settings, no need to change this if no eeprom errors
 #define NO_POWER_FLAG 7 
@@ -24,22 +25,40 @@ UniversalTelegramBot bot(BOTtoken, client);
 // Telegram end
 
 // Wifi connection settings
+// #define WIFI_SSID "AJAX | Technical"
+// #define WIFI_PASSWORD "ajaX4technics2020"
 #define WIFI_SSID "YOUR OWN VALUE"
 #define WIFI_PASSWORD "YOUR OWN VALUE"
 
 // Text messages
-#define MSG_POWER_ON "Power is on💡"
-#define MSG_POWER_OFF "Power is out⚡"
+#define MSG_POWER_ON "💡 Світло з'явилося! 🎉"
+#define MSG_POWER_OFF "🪫 Світло скінчилося! 😠 ⚡"
 
 // Power probe pin on the board, up to 3.3v, please do not use 5v directly
-#define EXTERNAL_POWER_PROBE_PIN 4
+#define EXTERNAL_POWER_PROBE_PIN 26
 
 SimpleTimer timer;
 
 boolean isEepromError = false;
+time_t powerOffTime; // Змінна для зберігання часу вимкнення світла
 
 boolean isEepromValid(int eeprom) {  
   return eeprom == WITH_POWER_FLAG || eeprom == NO_POWER_FLAG;
+}
+
+// Функція для обчислення тривалості без світла та формування повідомлення
+String calculatePowerOutageDuration(time_t startTime, time_t endTime) {
+  long duration = endTime - startTime;
+  int hours = duration / 3600;
+  int minutes = (duration % 3600) / 60;
+
+  String durationMessage = "";
+  if (hours > 0) {
+    durationMessage += String(hours) + " год ";
+  }
+  durationMessage += String(minutes) + " хв";
+
+  return durationMessage;
 }
 
 void readExternalPower() {
@@ -68,12 +87,19 @@ void readExternalPower() {
   if (isPowerBefore != isPowerNow) {
     Serial.print("status change detected, trying to send the message...");
     if (isPowerNow) {
-      if (!bot.sendMessage(TG_CHAT_ID, MSG_POWER_ON, "")) {
+      // Світло з'явилося
+      time_t currentTime = time(nullptr); // Отримуємо поточний час
+      String outageDuration = calculatePowerOutageDuration(powerOffTime, currentTime); // Обчислюємо тривалість без світла
+      String message = String(MSG_POWER_ON) + "\n⏱️ Світла не було " + outageDuration;
+      
+      if (!bot.sendMessage(TG_CHAT_ID, message, "")) {
         return;
       }
       EEPROM.write(EEPROM_ADDR, WITH_POWER_FLAG);
       EEPROM.commit();   
     } else {
+      // Світло вимкнулося
+      powerOffTime = time(nullptr); // Запам'ятовуємо час вимкнення світла
       if (!bot.sendMessage(TG_CHAT_ID, MSG_POWER_OFF, "")) {
         return;
       }
